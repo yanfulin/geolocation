@@ -349,6 +349,14 @@ def _tile(args):
 _G = {}
 
 
+def _zero_elevation(lat, lon):
+    return np.zeros_like(np.asarray(lat, float))
+
+
+def _init_worker(state):
+    _G.update(state)
+
+
 def locate(tracks, events, bbox, step=200.0, start=None, time_tol=30.0, window=None, elev=None,
            tol_v=0.25, tol_d=0.5, tol_dt=5.0, shift_tol=3.0, duration=None, silence_radius=None,
            top=10, refine=True, tile_deg=0.5, workers=4, verbose=False):
@@ -358,7 +366,7 @@ def locate(tracks, events, bbox, step=200.0, start=None, time_tol=30.0, window=N
     window : (t_lo, t_hi) unix-second range of ADS-B data to search when start is unknown.
     Returns the best point for each distinct set of aircraft, best first.
     """
-    elev = elev or (lambda la, lo: np.zeros_like(np.asarray(la, float)))
+    elev = elev or _zero_elevation
     if start is not None:
         t_lo, t_hi = start - time_tol - 300, start + max(e.t[-1] for e in events) + time_tol + 300
     elif window and len(events) >= 2:
@@ -372,7 +380,7 @@ def locate(tracks, events, bbox, step=200.0, start=None, time_tol=30.0, window=N
     tiles = [(a, b, min(a + tile_deg, la1), min(b + tile_deg, lo1))
              for a in np.arange(la0, la1, tile_deg) for b in np.arange(lo0, lo1, tile_deg)]
     if workers > 1 and len(tiles) > 1:
-        with Pool(workers) as pool:
+        with Pool(workers, initializer=_init_worker, initargs=(_G,)) as pool:
             parts = list(pool.imap_unordered(_tile, tiles, chunksize=1))
     else:
         parts = [_tile(t) for t in tiles]
